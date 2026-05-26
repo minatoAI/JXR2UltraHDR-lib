@@ -91,6 +91,36 @@ static void DescribePixelFormat(const PKPixelFormatGUID& guid, std::wstring& out
     }
 }
 
+// ── Helper: bytes per pixel for common pixel format GUIDs ──
+// Returns 8 (64bpp) for all formats ≤ 64bpp, exact value for wider formats.
+static int GetPixelFormatBpp(const PKPixelFormatGUID& guid)
+{
+    // 4 channels × 32-bit (128bpp) = 16 B/px
+    if (guid == GUID_PKPixelFormat128bppRGBAFloat ||
+        guid == GUID_PKPixelFormat128bppPRGBAFloat ||
+        guid == GUID_PKPixelFormat128bppRGBAFixedPoint)
+        return 16;
+    // 3 channels × 32-bit (96bpp) = 12 B/px
+    if (guid == GUID_PKPixelFormat96bppRGBFloat ||
+        guid == GUID_PKPixelFormat96bppRGBFixedPoint ||
+        guid == GUID_PKPixelFormat128bppRGBFloat ||
+        guid == GUID_PKPixelFormat128bppRGBFixedPoint)
+        return 12;
+    // Everything else (≤ 64bpp) fits within the 8 B/px target stride
+    // Default to 16 (conservative) for any unknown format to ensure
+    // the temp-buffer workaround kicks in for high-bpp pixel formats.
+    {
+        // Log the unknown GUID via OutputDebugString for debugging
+        WCHAR guidStr[64];
+        wsprintfW(guidStr, L"JXRDecoder: unknown pixel format {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}\n",
+            guid.Data1, guid.Data2, guid.Data3,
+            guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+            guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+        OutputDebugStringW(guidStr);
+    }
+    return 16;  // conservative: assume ≥ 128bpp
+}
+
 // ════════════════════════════════════════════════════════════════
 // Lightweight metadata — header decode only, no pixel copy
 // ════════════════════════════════════════════════════════════════
@@ -322,10 +352,21 @@ ConverterResult JXRDecoder::Decode(const std::wstring& filePath, ImageBuffer& ou
                                      L"Failed to get image dimensions");
     }
 
-    // ── 7. Allocate output buffer BEFORE Copy ──
+    // ── 7. Query source pixel format (for stride calculation) ──
+    PKPixelFormatGUID srcPf;
+    err = pDecoder->GetPixelFormat(pDecoder, &srcPf);
+    if (err != WMP_errSuccess) {
+        pDecoder->Release(&pDecoder);
+        pCodecFactory->Release(&pCodecFactory);
+        return ConverterResult::Fail(ConverterErrorCode::kJXRDecodeFailed,
+                                     L"Failed to get pixel format");
+    }
+    int srcBpp = GetPixelFormatBpp(srcPf);
+
+    // ── 8. Allocate output buffer BEFORE Copy ──
     outBuffer = ImageBuffer(static_cast<int>(width), static_cast<int>(height));
 
-    // ── 8. Create format converter → target RGBA F16 ──
+    // ── 9. Create format converter → target RGBA F16 ──
     err = pCodecFactory->CreateFormatConverter(&pConverter);
     if (err != WMP_errSuccess) {
         pDecoder->Release(&pDecoder);
@@ -351,12 +392,22 @@ ConverterResult JXRDecoder::Decode(const std::wstring& filePath, ImageBuffer& ou
                                      L"Failed to initialize format converter");
     }
 
-    // ── 9. Copy (decode + convert in one call) ──
-    PKRect rect = {0, 0, static_cast<I32>(outBuffer.width),
-                   static_cast<I32>(outBuffer.height)};
-    err = pConverter->Copy(pConverter, &rect,
-                           reinterpret_cast<U8*>(outBuffer.data.data()),
-                           static_cast<U32>(outBuffer.stride()));
+    // ── 10. Copy (decode + convert).  If source > 64bpp, use a temp buffer ──
+    //        because PKFormatConverter_Copy writes source-format data into the
+    //        user buffer (at the given stride) before converting in-place.
+    //        When source bpp > target bpp (64bpp = 8B/px), the user buffer
+    //        stride is too narrow and rows would overlap, causing data corruption.
+    PKRect rect = {0, 0, static_cast<I32>(width), static_cast<I32>(height)};
+    U8* dstBuf = reinterpret_cast<U8*>(outBuffer.data.data());
+    U32 copyStride = static_cast<U32>(outBuffer.stride());
+    std::vector<uint8_t> tempBuf;
+    if (srcBpp > 8) {
+        copyStride = static_cast<U32>(static_cast<size_t>(width) * srcBpp);
+        tempBuf.resize(static_cast<size_t>(height) * copyStride);
+        dstBuf = tempBuf.data();
+    }
+
+    err = pConverter->Copy(pConverter, &rect, dstBuf, copyStride);
     if (err != WMP_errSuccess) {
         pConverter->Release(&pConverter);
         pDecoder->Release(&pDecoder);
@@ -365,7 +416,17 @@ ConverterResult JXRDecoder::Decode(const std::wstring& filePath, ImageBuffer& ou
                                      L"Failed to decode/copy pixels");
     }
 
-    // ── 10. Release (reverse order): converter → decoder (closes stream) → codec factory ──
+    // Compact temp buffer to output (only when workaround was used)
+    if (!tempBuf.empty()) {
+        size_t dstStride = outBuffer.stride();
+        for (int y = 0; y < height; y++) {
+            memcpy(reinterpret_cast<uint8_t*>(outBuffer.data.data()) + y * dstStride,
+                   tempBuf.data() + static_cast<size_t>(y) * copyStride,
+                   dstStride);
+        }
+    }
+
+    // ── 11. Release (reverse order): converter → decoder (closes stream) → codec factory ──
     pConverter->Release(&pConverter);
     pDecoder->Release(&pDecoder);   // also closes the memory stream (fStreamOwner)
     pCodecFactory->Release(&pCodecFactory);
