@@ -1,0 +1,24 @@
+From: JXR2UltraHDR
+Subject: Fix color gamut sRGB - force SDR intent to BT.709 instead of Display P3
+
+libultrahdr's internal tone mapping was setting sdr_intent->cg = UHDR_CG_DISPLAY_P3,
+which caused the SDR base JPEG to use Display P3 gamut. Standard JPEG decoders
+interpret this as sRGB, resulting in oversaturated colors.
+
+This patch forces the SDR intent to BT.709 (≈ sRGB gamut), which matches what
+standard JPEG decoders expect.
+
+diff --git a/lib/src/jpegr.cpp b/lib/src/jpegr.cpp
+index 0000000..0000000 100644
+--- a/lib/src/jpegr.cpp
++++ b/lib/src/jpegr.cpp
+@@ -1983,7 +1983,7 @@ uhdr_error_info_t JpegR::toneMap(uhdr_raw_image_t* hdr_intent,
+     return status;
+   }
+
+-  sdr_intent->cg = UHDR_CG_DISPLAY_P3;
++  sdr_intent->cg = UHDR_CG_BT_709;
+   sdr_intent->ct = UHDR_CT_SRGB;
+   sdr_intent->range = UHDR_CR_FULL_RANGE;
+ 
+   ColorTransformFn hdrGamutConversionFn = getGamutConversionFn(sdr_intent->cg, hdr_intent->cg);

@@ -1,0 +1,13 @@
+# Build outputs
+build/
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ipdb
+*.iobj
+
+# IDE
+.vs/
+*.user
+*.suo

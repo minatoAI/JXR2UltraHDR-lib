@@ -1,0 +1,6 @@
+[submodule "ThirdParty/jxrlib"]
+	path = ThirdParty/jxrlib
+	url = https://github.com/minatoAI/jxrlib.git
+[submodule "ThirdParty/libultrahdr"]
+	path = ThirdParty/libultrahdr
+	url = https://github.com/minatoAI/libultrahdr.git
