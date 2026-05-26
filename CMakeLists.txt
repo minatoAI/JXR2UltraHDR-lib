@@ -94,6 +94,21 @@ endif()
 
 add_subdirectory("${UHDR_ROOT}" uhdr_build)
 
+# Fix CRT: libultrahdr forces /MT when BUILD_SHARED_LIBS=OFF on MSVC (line 211).
+# When building for WinUI (/MD), override back to /MD for all targets.
+if(MSVC AND BUILD_FOR_WINUI)
+    # Restore global CRT setting so FetchContent-built deps (turbojpeg) also use /MD
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    # Override per-target
+    foreach(tgt uhdr-static core image_io)
+        if(TARGET ${tgt})
+            set_target_properties(${tgt} PROPERTIES
+                MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+            )
+        endif()
+    endforeach()
+endif()
+
 # ════════════════════════════════════════════════════════════════
 # JXR2UltraHDR_core — 核心转换库（静态库）
 # ════════════════════════════════════════════════════════════════
