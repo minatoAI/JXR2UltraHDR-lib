@@ -73,10 +73,13 @@ set(UHDR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(UHDR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(UHDR_BUILD_DEPS ON CACHE BOOL "" FORCE)
 set(UHDR_WRITE_XMP ON CACHE BOOL "" FORCE)
+# Pin CRT to /MD in the CACHE so that FetchContent-built deps (turbojpeg)
+# inherit /MD even when libultrahdr's CMakeLists.txt overrides it locally to /MT.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "MSVC runtime library" FORCE)
 
-# Apply color-gamut patch before building libultrahdr
-set(UHDR_PATCH_FLAG "${UHDR_ROOT}/.patched")
-if(NOT EXISTS "${UHDR_PATCH_FLAG}")
+# Apply patches before building libultrahdr
+set(UHDR_PATCH_COLOR_FLAG "${UHDR_ROOT}/.patched_color_gamut")
+if(NOT EXISTS "${UHDR_PATCH_COLOR_FLAG}")
     message(STATUS "Applying fix_color_gamut_srgb.patch to libultrahdr ...")
     execute_process(
         COMMAND git apply "${CMAKE_CURRENT_SOURCE_DIR}/patches/fix_color_gamut_srgb.patch"
@@ -86,10 +89,28 @@ if(NOT EXISTS "${UHDR_PATCH_FLAG}")
         OUTPUT_QUIET
     )
     if(_patch_result EQUAL 0)
-        file(WRITE "${UHDR_PATCH_FLAG}" "patched")
+        file(WRITE "${UHDR_PATCH_COLOR_FLAG}" "patched")
         message(STATUS "Patch applied successfully")
     else()
         message(WARNING "Patch failed to apply (may already be applied): ${_patch_error}")
+    endif()
+endif()
+
+set(UHDR_PATCH_CRT_FLAG "${UHDR_ROOT}/.patched_crt_winui")
+if(MSVC AND BUILD_FOR_WINUI AND NOT EXISTS "${UHDR_PATCH_CRT_FLAG}")
+    message(STATUS "Applying fix_crt_md_for_winui.patch to libultrahdr ...")
+    execute_process(
+        COMMAND git apply "${CMAKE_CURRENT_SOURCE_DIR}/patches/fix_crt_md_for_winui.patch"
+        WORKING_DIRECTORY "${UHDR_ROOT}"
+        RESULT_VARIABLE _patch_result
+        ERROR_VARIABLE _patch_error
+        OUTPUT_QUIET
+    )
+    if(_patch_result EQUAL 0)
+        file(WRITE "${UHDR_PATCH_CRT_FLAG}" "patched")
+        message(STATUS "CRT patch applied successfully")
+    else()
+        message(WARNING "CRT patch failed to apply (may already be applied): ${_patch_error}")
     endif()
 endif()
 
@@ -101,7 +122,7 @@ if(MSVC AND BUILD_FOR_WINUI)
     # Restore global CRT setting so FetchContent-built deps (turbojpeg) also use /MD
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     # Override per-target
-    foreach(tgt uhdr-static core image_io)
+    foreach(tgt uhdr-static core image_io jpeg-static jpeg12-static jpeg16-static)
         if(TARGET ${tgt})
             set_target_properties(${tgt} PROPERTIES
                 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"

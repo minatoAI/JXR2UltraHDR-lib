@@ -111,7 +111,7 @@ static int GetPixelFormatBpp(const PKPixelFormatGUID& guid)
     // the temp-buffer workaround kicks in for high-bpp pixel formats.
     {
         // Log the unknown GUID via OutputDebugString for debugging
-        WCHAR guidStr[64];
+        WCHAR guidStr[128];
         wsprintfW(guidStr, L"JXRDecoder: unknown pixel format {%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}\n",
             guid.Data1, guid.Data2, guid.Data3,
             guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],

@@ -1,0 +1,9 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -492,7 +492,7 @@ else()
+   ExternalProject_Add(${JPEGTURBO_TARGET_NAME}
+       CMAKE_ARGS ${UHDR_CMAKE_ARGS} -DENABLE_SHARED=0
++      CMAKE_ARGS ${UHDR_CMAKE_ARGS} -DENABLE_SHARED=0 -DWITH_CRT_DLL=ON
+       BUILD_BYPRODUCTS ${JPEG_LIBRARIES}
+       INSTALL_COMMAND ""
+   )

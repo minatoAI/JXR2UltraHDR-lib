@@ -1,0 +1,11 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -208,6 +208,9 @@ elseif(DEFINED UHDR_SANITIZE_OPTIONS OR UHDR_BUILD_FUZZERS)
+   message(STATUS "Pure static executable may not possible, disabling '-static' option")
+   set(UHDR_ENABLE_STATIC_LINKING OFF)
++elseif(MSVC AND DEFINED BUILD_FOR_WINUI AND BUILD_FOR_WINUI)
++  # WinUI builds use /MD (DLL CRT), keep the global setting from parent project
++  set(UHDR_ENABLE_STATIC_LINKING OFF)
+ elseif(MSVC)
+   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+   set(UHDR_ENABLE_STATIC_LINKING ON)
