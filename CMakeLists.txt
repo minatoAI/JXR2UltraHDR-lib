@@ -114,6 +114,25 @@ if(MSVC AND BUILD_FOR_WINUI AND NOT EXISTS "${UHDR_PATCH_CRT_FLAG}")
     endif()
 endif()
 
+# Fix JPEG segment order: JFIF first, MPF before SOS (CIPA DC-007)
+set(UHDR_PATCH_SEGORDER_FLAG "${UHDR_ROOT}/.patched_segorder")
+if(MSVC AND NOT EXISTS "${UHDR_PATCH_SEGORDER_FLAG}")
+    message(STATUS "Applying fix_jpeg_segment_order.patch to libultrahdr ...")
+    execute_process(
+        COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_SOURCE_DIR}/patches/fix_jpeg_segment_order.patch"
+        WORKING_DIRECTORY "${UHDR_ROOT}"
+        RESULT_VARIABLE _patch_result
+        ERROR_VARIABLE _patch_error
+        OUTPUT_QUIET
+    )
+    if(_patch_result EQUAL 0)
+        file(WRITE "${UHDR_PATCH_SEGORDER_FLAG}" "patched")
+        message(STATUS "Segment order patch applied successfully")
+    else()
+        message(WARNING "Segment order patch failed to apply (may already be applied): ${_patch_error}")
+    endif()
+endif()
+
 add_subdirectory("${UHDR_ROOT}" uhdr_build)
 
 # Fix CRT: libultrahdr forces /MT when BUILD_SHARED_LIBS=OFF on MSVC (line 211).
